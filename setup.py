@@ -57,14 +57,14 @@ class build_ext(_build_ext):
         espeak_dir = self._cmake_dir / "ei"
         ort_dir = _onnxruntime_dir()
         for ext in self.extensions:
-            ext.include_dirs[:] = [
+            ext.include_dirs.extend([
                 str(espeak_dir / "include"),
                 str(ort_dir / "include"),
-            ]
-            ext.library_dirs[:] = [
+            ])
+            ext.library_dirs.extend([
                 str(espeak_dir / "lib"),
                 str(ort_dir / "lib"),
-            ]
+            ])
         super().build_extensions()
 
 
