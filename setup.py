@@ -2,6 +2,7 @@ import platform
 import subprocess
 from pathlib import Path
 
+import pybind11
 from pybind11.setup_helpers import Pybind11Extension
 from pybind11.setup_helpers import build_ext as _build_ext
 from setuptools import setup
@@ -58,6 +59,7 @@ class build_ext(_build_ext):
         ort_dir = _onnxruntime_dir()
         for ext in self.extensions:
             ext.include_dirs.extend([
+                pybind11.get_include(),
                 str(espeak_dir / "include"),
                 str(ort_dir / "include"),
             ])
@@ -78,8 +80,6 @@ ext_modules = [
             "src/tashkeel.cpp",
         ],
         define_macros=[("VERSION_INFO", _VERSION)],
-        include_dirs=[],
-        library_dirs=[],
         libraries=["espeak-ng", "onnxruntime"],
     ),
 ]
