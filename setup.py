@@ -43,8 +43,8 @@ __version__ = "1.2.0"
 # Platform-specific linker arguments
 if system == "darwin":  # macOS
     extra_link_args = [
-        f"-Wl,-rpath,{_ESPEAK_DIR.absolute() / 'lib'}:{_ONNXRUNTIME_DIR.absolute() / 'lib'}",
-        f"-Wl,-install_name,@rpath/libespeak-ng.1.dylib",
+        f"-Wl,-rpath,{_ESPEAK_DIR.absolute() / 'lib'}",
+        f"-Wl,-rpath,{_ONNXRUNTIME_DIR.absolute() / 'lib'}",
     ]
 elif system == "linux":
     extra_link_args = [
@@ -66,6 +66,7 @@ ext_modules = [
         include_dirs=[str(_ESPEAK_DIR / "include"), str(_ONNXRUNTIME_DIR / "include")],
         library_dirs=[str(_ESPEAK_DIR / "lib"), str(_ONNXRUNTIME_DIR / "lib")],
         libraries=["espeak-ng", "onnxruntime"],
+        extra_compile_args=["-std=c++17"],  # uni_algo requires C++17
         extra_link_args=extra_link_args,
     ),
 ]
