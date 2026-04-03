@@ -1,7 +1,9 @@
 import platform
-import sys
+import shutil
+import subprocess
 from pathlib import Path
 from setuptools import setup
+from setuptools.command.build_py import build_py as _build_py
 
 # Import pybind11 only when needed
 try:
@@ -24,7 +26,6 @@ sys_pattern = "*.dylib" if system == "darwin" else "*.so"
 if system == "darwin":  # macOS
     onnxruntime_dir_name = f"onnxruntime-osx-{machine}-1.14.1"
 elif system == "linux":
-    # For Linux, we need to determine the architecture
     if machine in ["x86_64", "amd64"]:
         arch = "x64"
     elif machine in ["aarch64", "arm64"]:
@@ -40,16 +41,76 @@ _ONNXRUNTIME_DIR = _LIB_DIR
 
 __version__ = "1.2.0"
 
-# Platform-specific linker arguments
-if system == "darwin":  # macOS
+
+def _run_cmake():
+    """Download and build native dependencies (espeak-ng, onnxruntime) via CMake."""
+    if _ESPEAK_DIR.exists() and _ONNXRUNTIME_DIR.exists():
+        return
+    build_dir = _DIR / "build"
+    build_dir.mkdir(exist_ok=True)
+    subprocess.check_call(["cmake", str(_DIR), "-B", str(build_dir)], cwd=str(_DIR))
+    subprocess.check_call(
+        ["cmake", "--build", str(build_dir), "--config", "Release"],
+        cwd=str(_DIR),
+    )
+
+
+def _copy_data_files():
+    """Copy runtime data files and dylibs into piper_phonemize/ for bundling."""
+    pkg_dir = _DIR / "piper_phonemize"
+
+    # espeak-ng-data
+    src = _ESPEAK_DIR / "share" / "espeak-ng-data"
+    dst = pkg_dir / "espeak-ng-data"
+    if src.exists() and not dst.exists():
+        shutil.copytree(str(src), str(dst))
+
+    # libtashkeel_model.ort
+    src = _DIR / "etc" / "libtashkeel_model.ort"
+    dst = pkg_dir / "libtashkeel_model.ort"
+    if src.exists() and not dst.exists():
+        shutil.copy2(str(src), str(dst))
+
+    # Dynamic libraries — bundle them so @loader_path / $ORIGIN rpath works
+    for lib in (_ESPEAK_DIR / "lib").glob(sys_pattern):
+        dst = pkg_dir / lib.name
+        if not dst.exists():
+            shutil.copy2(str(lib), str(dst))
+    for lib in (_ONNXRUNTIME_DIR / "lib").glob(sys_pattern):
+        dst = pkg_dir / lib.name
+        if not dst.exists():
+            shutil.copy2(str(lib), str(dst))
+
+
+class BuildPy(_build_py):
+    """Run cmake before copying package data so bundled files are present."""
+
+    def run(self):
+        _run_cmake()
+        _copy_data_files()
+        super().run()
+
+
+class BuildExt(build_ext):
+    """Run cmake before compiling the C++ extension."""
+
+    def run(self):
+        _run_cmake()
+        _copy_data_files()
+        super().run()
+
+
+# Use @loader_path / $ORIGIN so the extension finds its bundled dylibs
+# regardless of where the package is installed.
+if system == "darwin":
     extra_link_args = [
-        f"-Wl,-rpath,{_ESPEAK_DIR.absolute() / 'lib'}",
-        f"-Wl,-rpath,{_ONNXRUNTIME_DIR.absolute() / 'lib'}",
+        # @loader_path       → works for normal installs (.so lives inside piper_phonemize/)
+        # @loader_path/piper_phonemize → works for editable installs (.so lives in repo root)
+        "-Wl,-rpath,@loader_path",
+        "-Wl,-rpath,@loader_path/piper_phonemize",
     ]
 elif system == "linux":
-    extra_link_args = [
-        f"-Wl,-rpath-link,{_ESPEAK_DIR.absolute() / 'lib'}:{_ONNXRUNTIME_DIR.absolute() / 'lib'}",
-    ]
+    extra_link_args = ["-Wl,-rpath,$ORIGIN", "-Wl,-rpath,$ORIGIN/piper_phonemize"]
 else:
     extra_link_args = []
 
@@ -82,15 +143,15 @@ setup(
     packages=["piper_phonemize"],
     package_data={
         "piper_phonemize": [
-            str(p) for p in (_DIR / "build" / "ei" / "share" / "espeak-ng-data").rglob("*")
+            "espeak-ng-data/**/*",
+            "libtashkeel_model.ort",
+            "*.dylib",
+            "*.so",
         ]
-        + [str(_DIR / "etc" / "libtashkeel_model.ort")]
-        + [str(p) for p in (_DIR / "build" / "ei" / "lib").glob(sys_pattern)]
-        + [str(p) for p in (_ONNXRUNTIME_DIR / "lib").glob(sys_pattern)]
     },
     include_package_data=True,
     ext_modules=ext_modules,
-    cmdclass={"build_ext": build_ext},
+    cmdclass={"build_py": BuildPy, "build_ext": BuildExt},
     zip_safe=False,
     python_requires=">=3.7",
     install_requires=[
