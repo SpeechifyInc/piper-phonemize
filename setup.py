@@ -19,7 +19,7 @@ _ESPEAK_DIR = _DIR / "build" / "ei"
 # Platform detection
 system = platform.system().lower()
 machine = platform.machine().lower()
-sys_pattern = "*.dylib" if system == "darwin" else "*.so"
+sys_pattern = "*.dylib" if system == "darwin" else "*.so*"
 
 
 # Determine onnxruntime directory based on platform
@@ -146,7 +146,7 @@ setup(
             "espeak-ng-data/**/*",
             "libtashkeel_model.ort",
             "*.dylib",
-            "*.so",
+            "*.so*",
         ]
     },
     include_package_data=True,
